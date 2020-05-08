@@ -1,0 +1,6 @@
+--c99 -c --cpu Cortex-M0+ -D__MICROLIB -g -O3 --apcs=interwork --split_sections -I ../Inc -I ../Drivers/STM32L0xx_HAL_Driver/Inc -I ../Drivers/STM32L0xx_HAL_Driver/Inc/Legacy -I ../Drivers/CMSIS/Device/ST/STM32L0xx/Include -I ../Drivers/CMSIS/Include
+-I.\RTE\_LoRa_Update
+-ID:\Keil_v5\ARM\PACK\ARM\CMSIS\5.4.0\CMSIS\Core\Include
+-ID:\Keil_v5\ARM\PACK\Keil\STM32L0xx_DFP\2.0.1\Drivers\CMSIS\Device\ST\STM32L0xx\Include
+-D__UVISION_VERSION="527" -D_RTE_ -DSTM32L083xx -DUSE_HAL_DRIVER -DSTM32L083xx
+-o lora_update\stm32l0xx_hal_flash_ex.o --omf_browse lora_update\stm32l0xx_hal_flash_ex.crf --depend lora_update\stm32l0xx_hal_flash_ex.d --feedback "LoRa_Update\LoRa_Update.fed" "../Drivers/STM32L0xx_HAL_Driver/Src/stm32l0xx_hal_flash_ex.c"
