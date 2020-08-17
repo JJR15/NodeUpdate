@@ -1,7 +1,8 @@
 #include "update.h"
-#include "common.h"
 #include <stdio.h>
 #include <stdlib.h>
+#include "decode.h"
+#include <string.h>
 
 #define max(A,B)  A>B?A:B
 #define min(A,B)  A<B?A:B
@@ -16,31 +17,35 @@ uint16_t flash_buf_length = 0;
 uint16_t reloc_map[150]={0};
 uint8_t reloc_map_len = 0;
 
-uint8_t page_update_map[1200]={0};
+//uint8_t page_update_map[1200]={0};
+uint8_t*page_update_map;
 
 typedef union{
 	struct {
 		uint16_t list_start;
 		uint8_t to_length;
 	}edges;
-	uint8_t*page;
+	uint32_t page;
 }page_t;
 
-page_t graph_to[1200]={{0,0}};
-uint8_t graph_from[1200]={0};
+uint32_t cache_start, cache_end;
+int8_t*cache_flag;
 
-int16_t node_to_list[3500]={0};
+//page_t graph_to[1200]={{0,0}};
+//uint8_t graph_from[1200]={0};
+page_t* graph_to;
+uint8_t*graph_from;
+
+//int16_t node_to_list[3500]={0};
+int16_t*node_to_list;
 uint16_t node_to_list_len = 0;
 
 uint32_t d_start, d_end, r_start, r_end, f_start, f_end;
 
-uint16_t read16(uint32_t address);
-uint32_t read24(uint32_t address);
-uint32_t read32(uint32_t address);
 void write_to_buf16(uint16_t word);
 void write_to_buf32(uint32_t dword);
 int8_t move_flash(uint32_t move_page, uint32_t start_page,uint32_t end_page);
-int8_t page_copy(uint32_t addr);
+
 void update_bin2(void);
 void update_page(uint32_t page_index);
 
@@ -176,7 +181,7 @@ void updateReloctable(){
 
 		
 		if(flash_buf_length >= 128){
-			page_copy(write_to_addr);
+			page_copy(write_to_addr, flash_buf);
 			write_to_addr +=128;
 			flash_buf_length -=128;
 			
@@ -186,7 +191,7 @@ void updateReloctable(){
 			flash_buf[3] = flash_buf[131];
 		}
 	}                                                                         
-	page_copy(write_to_addr);
+	page_copy(write_to_addr, flash_buf);
 	
 	reloc_map[reloc_map_len++] = reloc_new_len;
 }
@@ -252,155 +257,173 @@ void findNext(uint32_t diff_start, uint32_t diff_end, uint32_t*index,uint32_t*le
 	}
 }
 
-//void update_bin2(void){
-//	uint32_t move_len = read32(UPDATE_DATA_ADDRESS + 4);
-//	uint32_t old_bin_len = read32(UPDATE_DATA_ADDRESS + 8);
-//	uint32_t delta_end = read32(UPDATE_DATA_ADDRESS + 12);
-//	uint32_t r_fix_end = read32(UPDATE_DATA_ADDRESS + 16);
-//		
-//	uint32_t reloc_new_len = read16(UPDATE_DATA_ADDRESS + 24);
-//	
-//	d_start = UPDATE_DATA_ADDRESS + 34;
-//	d_end = UPDATE_DATA_ADDRESS + delta_end;
-//	
-//	f_start = UPDATE_DATA_ADDRESS + delta_end;
-//	f_end = UPDATE_DATA_ADDRESS + r_fix_end;
-//	
-//	r_start = RELOCTABLE_ADDRESS;
-//	r_end = RELOCTABLE_ADDRESS + reloc_new_len * 6;
-//	
-//	uint32_t addr = d_start,n,type,bin_len=0;
-//	uint32_t old_start;
-//	
-
-//	/*uint32_t base = 0x08000000;
-//	uint32_t last=0;
-//	uint32_t r;
-//	for(r=0;r<reloc_new_len;r++){
-//		uint32_t reloc_addr=read16(RELOCTABLE_ADDRESS + r * 6)+base;
-//		if(reloc_addr<last){
-//			base+=0x10000;
-//			reloc_addr+=0x10000;
-//		}
-//		last = reloc_addr;
-//		while(reloc_addr>=reloc_map_len*1024+APPLICATION_ADDRESS){
-//			reloc_map[reloc_map_len++] = r;
-//		}
-//	}
-//	reloc_map[reloc_map_len++] = r;*/
-//	
-//	//build graph
-//	while(addr < d_end){
-//		n = read24(addr);
-//		type = n >> 23;
-//		n = n&0x007fffff;
-//	
-//		//sprintf(buf, "n type %d %d \r\n",n, type);
-//		//Serial_PutString(buf);
-//		
-//		if(type==0){
-//			old_start = read24(addr+3)+0x08000000-APPLICATION_ADDRESS;
-//			addr+=6;
-//			//sprintf(buf, "bin_len n old_start %d %d %d \r\n",bin_len,n, old_start);
-//			//Serial_PutString(buf);
-//			
-//			uint32_t st,ed;
-//			for(uint32_t i=(bin_len>>7);i<=(bin_len+n-1)>>7;i++){
-//				st = max(i<<7,bin_len);
-//				ed = min((i<<7)+127,bin_len+n-1);
-//				st=(st-bin_len+old_start)>>7;
-//				ed=(ed-bin_len+old_start)>>7;
-//				
-//				//sprintf(buf, "i st ed %d %d %d\r\n",i,st,ed);
-//				//Serial_PutString(buf);
-//				
-//				if(st!=i){
-//					graph_from[st]++;
-//					
-//					if(graph_to[i].edges.to_length==0){
-//						graph_to[i].edges.list_start = node_to_list_len;
-//					}
-//					graph_to[i].edges.to_length++;
-//					node_to_list[node_to_list_len++]=st;
-//					
-//					//sprintf(buf, "st %d %d %d %d %d\r\n",i,st,node_to_list_len,graph_to[i].edges.list_start,graph_to[i].edges.to_length );
-//					//Serial_PutString(buf);
-//				}
-//				if(ed!=st&&ed!=i){
-//					graph_from[ed]++;
-//					
-//					if(graph_to[i].edges.to_length==0){
-//						graph_to[i].edges.list_start = node_to_list_len;
-//					}
-//					graph_to[i].edges.to_length++;
-//					node_to_list[node_to_list_len++]=ed;
-//					
-//					//sprintf(buf, "ed %d %d %d %d %d\r\n",i,ed,node_to_list_len,graph_to[i].edges.list_start,graph_to[i].edges.to_length );
-//					//Serial_PutString(buf);
-//				}
-//			}
-//		}
-//		else{
-//			addr+=3+n;
-//		}
-//		bin_len+=n;	
-//	}
-//	
-//	//sprintf(buf, "node_to_list_len %d\r\n",node_to_list_len);
-//	//Serial_PutString(buf);
-//	
-//	//update page
-//	for(uint16_t i=0;i<=(bin_len-1)>>7;i++){
-//		uint16_t page = 0;
-//		uint8_t depend_n=0xff;
-//		for(uint16_t j=0;j<=(bin_len-1)>>7;j++){
-//			if(page_update_map[j]==0){
-//				if(graph_from[j]<depend_n){
-//					page = j;
-//					depend_n = graph_from[j];
-//				}
-//			}
-//		}
-//		
-//		
-//		uint8_t*saved_page=0; 
-//		if(depend_n!=0){
-//			//save page
-//			saved_page = malloc(128*sizeof(uint8_t));
-//			for(uint8_t j=0;j<128;j++){
-//				saved_page[j] = *(uint8_t*)(APPLICATION_ADDRESS + page*128 +j);
-//			}
-//			
-//			//sprintf(buf, "save %d\r\n",page);
-//			//Serial_PutString(buf);
-//		}
-//		
-//		
-//		sprintf(buf, "update %d %d\r\n",i,page);
-//		Serial_PutString(buf);
-//		update_page(page);
-//		//page_update_map[page]= 1;
-//		
-//		//update graph	
-//		for(uint16_t j=0;j<graph_to[page].edges.to_length;j++){
-//			uint16_t from_page = node_to_list[graph_to[page].edges.list_start+j];
-//			graph_from[from_page]--;
-//			
-//			//sprintf(buf, "del %d %d %d\r\n",page,from_page,graph_from[from_page]);
-//			//Serial_PutString(buf);
-//			
-//			
-//			if(graph_from[from_page]==0&&page_update_map[from_page]==1){
-//				free(graph_to[from_page].page);
-//				
-//				//sprintf(buf, "free %d\r\n",from_page);
-//				//Serial_PutString(buf);
-//			}
-//		}
-//		graph_to[page].page=saved_page;
-//	}
-//	
-//}
+void update_bin2(void){
+	uint32_t move_len = read32(UPDATE_DATA_ADDRESS + 4);
+	uint32_t old_bin_len = read32(UPDATE_DATA_ADDRESS + 8);
+	uint32_t delta_end = read32(UPDATE_DATA_ADDRESS + 12);
+	uint32_t r_fix_end = read32(UPDATE_DATA_ADDRESS + 16);
+		
+	uint32_t reloc_new_len = read16(UPDATE_DATA_ADDRESS + 24);
+	
+	d_start = UPDATE_DATA_ADDRESS + 34;
+	d_end = UPDATE_DATA_ADDRESS + delta_end;
+	
+	f_start = UPDATE_DATA_ADDRESS + delta_end;
+	f_end = UPDATE_DATA_ADDRESS + r_fix_end;
+	
+	r_start = RELOCTABLE_ADDRESS;
+	r_end = RELOCTABLE_ADDRESS + reloc_new_len * 6;
+	
+	uint32_t addr = d_start,n,type,bin_len=0;
+	uint32_t old_start;
+	
+	
+	/*uint32_t base = 0x08000000;
+	uint32_t last=0;
+	uint32_t r;
+	for(r=0;r<reloc_new_len;r++){
+		uint32_t reloc_addr=read16(RELOCTABLE_ADDRESS + r * 6)+base;
+		if(reloc_addr<last){
+			base+=0x10000;
+			reloc_addr+=0x10000;
+		}
+		last = reloc_addr;
+		while(reloc_addr>=reloc_map_len*1024+APPLICATION_ADDRESS){
+			reloc_map[reloc_map_len++] = r;
+		}
+	}
+	reloc_map[reloc_map_len++] = r;*/
+	
+	//build graph
+	while(addr < d_end){
+		n = read24(addr);
+		type = n >> 23;
+		n = n&0x007fffff;
+	
+		//sprintf(buf, "n type %d %d \r\n",n, type);
+		//Serial_PutString(buf);
+		
+		if(type==0){
+			old_start = read24(addr+3)+0x08000000-APPLICATION_ADDRESS;
+			addr+=6;
+			//sprintf(buf, "bin_len n old_start %d %d %d \r\n",bin_len,n, old_start);
+			//Serial_PutString(buf);
+			
+			uint32_t st,ed;
+			for(uint32_t i=(bin_len>>7);i<=(bin_len+n-1)>>7;i++){
+				st = max(i<<7,bin_len);
+				ed = min((i<<7)+127,bin_len+n-1);
+				st=(st-bin_len+old_start)>>7;
+				ed=(ed-bin_len+old_start)>>7;
+				
+				//sprintf(buf, "i st ed %d %d %d\r\n",i,st,ed);
+				//Serial_PutString(buf);
+				
+				if(st!=i){
+					graph_from[st]++;
+					
+					if(graph_to[i].edges.to_length==0){
+						graph_to[i].edges.list_start = node_to_list_len;
+					}
+					graph_to[i].edges.to_length++;
+					node_to_list[node_to_list_len++]=st;
+					
+					//sprintf(buf, "st %d %d %d %d %d\r\n",i,st,node_to_list_len,graph_to[i].edges.list_start,graph_to[i].edges.to_length );
+					//Serial_PutString(buf);
+				}
+				if(ed!=st&&ed!=i){
+					graph_from[ed]++;
+					
+					if(graph_to[i].edges.to_length==0){
+						graph_to[i].edges.list_start = node_to_list_len;
+					}
+					graph_to[i].edges.to_length++;
+					node_to_list[node_to_list_len++]=ed;
+					
+					//sprintf(buf, "ed %d %d %d %d %d\r\n",i,ed,node_to_list_len,graph_to[i].edges.list_start,graph_to[i].edges.to_length );
+					//Serial_PutString(buf);
+				}
+			}
+		}
+		else{
+			addr+=3+n;
+		}
+		bin_len+=n;	
+	}
+	
+	//sprintf(buf, "node_to_list_len %d\r\n",node_to_list_len);
+	//Serial_PutString(buf);
+	
+	
+	//uint16_t save_count = 0;
+	//uint16_t require_save_count = 0;
+	//uint16_t max_require_save_count = 0;
+	
+	//update page
+	for(uint16_t i=0;i<=(bin_len-1)>>7;i++){
+		uint16_t page = 0;
+		uint8_t depend_n=0xff;
+		for(uint16_t j=0;j<=(bin_len-1)>>7;j++){
+			if(page_update_map[j]==0){
+				if(graph_from[j]<depend_n){
+					page = j;
+					depend_n = graph_from[j];
+				}
+			}
+		}
+		
+		
+		
+		uint32_t saved_page=0; 
+		if(depend_n!=0){
+			//save page
+			saved_page = alloc_cache();
+			/*require_save_count++;
+			if(max_require_save_count<require_save_count)
+				max_require_save_count = require_save_count;
+			
+			sprintf(buf, "alloc %x\r\n",saved_page);
+			Serial_PutString(buf);
+			
+			if(saved_page==NULL){
+				Serial_PutString("malloc error******************************\r\n");
+			}
+			else{
+				save_count++;
+			}*/
+			
+			write_cache(saved_page, APPLICATION_ADDRESS + (page<<7));
+			
+			//sprintf(buf, "save %d %d\r\n",page, save_count);
+			//Serial_PutString(buf);
+		}
+		
+		/*sprintf(buf, "update %d %d\r\n",i,page);
+		Serial_PutString(buf);*/
+		update_page(page);
+		
+		//update graph	
+		for(uint16_t j=0;j<graph_to[page].edges.to_length;j++){
+			uint16_t from_page = node_to_list[graph_to[page].edges.list_start+j];
+			graph_from[from_page]--;
+			
+			//sprintf(buf, "del %d %d %d\r\n",page,from_page,graph_from[from_page]);
+			//Serial_PutString(buf);
+			
+			
+			if(graph_from[from_page]==0&&page_update_map[from_page]==1){
+				free_cache(graph_to[from_page].page);
+				/*save_count--;
+				require_save_count--;
+				sprintf(buf, "free %d %d\r\n",from_page,save_count);
+				Serial_PutString(buf);*/
+			}
+		}
+		graph_to[page].page=saved_page;
+	}
+	/*sprintf(buf, "require %d\r\n",max_require_save_count);
+	Serial_PutString(buf);*/
+}
 
 
 void update_page(uint32_t page_index){
@@ -452,7 +475,7 @@ void update_page(uint32_t page_index){
 					else{
 						//sprintf(buf, "copy save %d\r\n",p_index);
 						//Serial_PutString(buf);
-						flash_buf[write_addr-n+start_n-((page_index<<7))] = graph_to[p_index].page[copy_addr+start_n-APPLICATION_ADDRESS-(p_index<<7)];
+						flash_buf[write_addr-n+start_n-((page_index<<7))] = ((uint8_t*)graph_to[p_index].page)[copy_addr+start_n-APPLICATION_ADDRESS-(p_index<<7)];
 					}
 				}
 			}
@@ -517,12 +540,12 @@ void update_page(uint32_t page_index){
 		}
 	}
 	
-	page_copy(page_addr);
+	page_copy(page_addr, flash_buf);
 	page_update_map[page_index]= 1;
 }
 
 
-void update_bin(){
+/*void update_bin(){
 	uint32_t move_len = read32(UPDATE_DATA_ADDRESS + 4);
 	uint32_t old_bin_len = read32(UPDATE_DATA_ADDRESS + 8);
 	uint32_t delta_end = read32(UPDATE_DATA_ADDRESS + 12);
@@ -543,8 +566,8 @@ void update_bin(){
 	uint32_t move_page, end_page;
 	move_page=(move_len+127)&0xffffff80;
 	end_page = (APPLICATION_ADDRESS + old_bin_len)&0xFFFFFF80;
-	//sprintf(buf, "move_page %d \r\n",move_page);
-	//Serial_PutString(buf);
+	sprintf(buf, "move_page %d \r\n",move_page);
+	Serial_PutString(buf);
 	move_flash(move_page,APPLICATION_ADDRESS, end_page);
 	
 	uint32_t i,type,n,copy_addr,delta_addr, reloc_addr,reloc_last, fix_addr;
@@ -591,8 +614,6 @@ void update_bin(){
 				flash_buf[flash_buf_length-2]=*(uint8_t*)(r_start+4);
 				flash_buf[flash_buf_length-1]=*(uint8_t*)(r_start+5);
 					
-				
-				
 				r_start += 6;			
 				reloc_last = reloc_addr;
 				if(r_start<r_end){
@@ -617,7 +638,7 @@ void update_bin(){
 			}
 
 			if(flash_buf_length ==130){
-				page_copy(copy_addr);
+				page_copy(copy_addr, flash_buf);
 				flash_buf_length = 2;
 				flash_buf[0] = flash_buf[128];
 				flash_buf[1] = flash_buf[129];
@@ -625,13 +646,32 @@ void update_bin(){
 			}
 		}
 	}
-	page_copy(copy_addr);
-}
+	page_copy(copy_addr, flash_buf);
+}*/
 
 void update(void){
+	uint32_t compress_flag = read16(DECODE_DATA_ADDRESS);
+	if(compress_flag==1){
+		Serial_PutString("start decode\r\n");
+		HAL_FLASH_Unlock();
+		__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_WRPERR | FLASH_FLAG_PGAERR | FLASH_FLAG_SIZERR |
+                         FLASH_FLAG_OPTVERR | FLASH_FLAG_RDERR | FLASH_FLAG_FWWERR |
+                         FLASH_FLAG_NOTZEROERR);
+		flashCopy(flash_buf,DECODE_DATA_ADDRESS, 128);
+		memset(flash_buf,0xff,4);
+		page_copy(DECODE_DATA_ADDRESS,flash_buf);
+		
+		LzmaDec();
+		
+		HAL_FLASH_Lock();
+		
+	}
+	else{
+		Serial_PutString("already decoded\r\n");
+	}
 	
 	uint32_t flag = read32(UPDATE_DATA_ADDRESS);
-	application_jump();
+	//application_jump();
 	if(flag!=1){
 		Serial_PutString("already updated\r\n");
 		application_jump();
@@ -639,15 +679,37 @@ void update(void){
 	}
 	Serial_PutString("start update\r\n");
 	HAL_FLASH_Unlock();
-	
 	__HAL_FLASH_CLEAR_FLAG(FLASH_FLAG_WRPERR | FLASH_FLAG_PGAERR | FLASH_FLAG_SIZERR |
                          FLASH_FLAG_OPTVERR | FLASH_FLAG_RDERR | FLASH_FLAG_FWWERR |
                          FLASH_FLAG_NOTZEROERR);
-	HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, UPDATE_DATA_ADDRESS, 0xffffffff);
+	
+	flashCopy(flash_buf,UPDATE_DATA_ADDRESS, 128);
+	memset(flash_buf,0xff,4);
+	page_copy(UPDATE_DATA_ADDRESS,flash_buf);
+
+	page_update_map = (uint8_t*)malloc(1200*sizeof(uint8_t));
+	graph_to = (page_t*)malloc(1200*sizeof(page_t));
+	graph_from = (uint8_t*)malloc(1200*sizeof(uint8_t));
+	node_to_list = (int16_t*)malloc(3500*sizeof(int16_t));
+	
+	cache_start = DECODE_DATA_ADDRESS;
+	cache_end = UPDATE_DATA_ADDRESS;
+	cache_flag = (int8_t*)malloc(((UPDATE_DATA_ADDRESS-DECODE_DATA_ADDRESS)>>7)*sizeof(int8_t));
+	
+	memset(page_update_map, 0, 1200*sizeof(uint8_t));
+	memset(graph_to, 0, 1200*sizeof(page_t));
+	memset(graph_from, 0, 1200*sizeof(uint8_t));
+	memset(node_to_list, 0, 3500*sizeof(int16_t));
+	memset(cache_flag,0, 160*sizeof(int8_t));
 	
 	updateReloctable();
 	Serial_PutString("update reloctable end\r\n");
-	update_bin();
+	update_bin2();
+	
+	free(page_update_map);
+	free(graph_to);
+	free(graph_from);
+	free(node_to_list);
 	
 	HAL_FLASH_Lock();
 	
@@ -664,7 +726,7 @@ int8_t move_flash(uint32_t move_page, uint32_t start_page,uint32_t end_page){
 	desc.NbPages = 1;
 	uint32_t result;
 	
-	Serial_PutString("move_flash start\r\n");
+	//Serial_PutString("move_flash start\r\n");
 	uint8_t i;
 	uint32_t *p=(uint32_t*) & flash_buf[0];
 	while(end_page>=start_page){
@@ -691,15 +753,15 @@ int8_t move_flash(uint32_t move_page, uint32_t start_page,uint32_t end_page){
 		}*/
 		end_page-=128;
 	}
-	Serial_PutString(buf);
-	Serial_PutString("move_flash end\r\n");
+	/*Serial_PutString(buf);
+	Serial_PutString("move_flash end\r\n");*/
 	return 0;
 }
 
-int8_t page_copy(uint32_t addr){
+int8_t page_copy(uint32_t addr, uint8_t*buffer){
 	uint8_t i,flag=0;
 	for(i=0;i<128;i++){
-		if(flash_buf[i]!=*(uint8_t*)(addr+i)){
+		if(buffer[i]!=*(uint8_t*)(addr+i)){
 			flag = 1;
 		}
 	}
@@ -708,7 +770,7 @@ int8_t page_copy(uint32_t addr){
 	}
 	FLASH_EraseInitTypeDef desc;
 	uint32_t result;
-	uint32_t *p=(uint32_t*) & flash_buf[0];
+	uint32_t *p=(uint32_t*) & buffer[0];
 	
   desc.TypeErase = FLASH_TYPEERASE_PAGES;
 	desc.NbPages = 1;
@@ -747,7 +809,43 @@ void application_jump(){
 		JumpToApplication();
 	}
 	else{
-		Serial_PutString("Start program execution error\r\n\n");
+		//Serial_PutString("Start program execution error\r\n\n");
+	}
+}
+
+uint32_t alloc_cache()
+{
+	uint32_t p = (uint32_t)malloc(128*sizeof(uint8_t));
+	if(p!=NULL) return p;
+	for(uint16_t i=0; i< ((cache_end-cache_start)>>7); i++)
+	{
+		if(cache_flag[i]==0){
+			cache_flag[i]=1;
+			return cache_start+(i<<7);
+		}
+	}
+	return 0;
+}
+
+void write_cache(uint32_t dst, uint32_t src)
+{
+	if(dst>=cache_start&&dst<cache_end){
+		uint8_t temp[128];
+		flashCopy(temp, src, 128);
+		page_copy(dst,temp);
+	}
+	else{
+		flashCopy((uint8_t*)dst,src,128);
+	}
+}
+
+void free_cache(uint32_t address)
+{
+	if(address>=cache_start&&address<cache_end){
+		cache_flag[(address-cache_start)>>7]=0;
+	}
+	else{
+		free((void*)address);
 	}
 }
 

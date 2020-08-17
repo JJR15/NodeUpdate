@@ -1,10 +1,13 @@
 /* LzmaDec.c -- LZMA Decoder
 2018-07-04 : Igor Pavlov : Public domain */
 
+//#include "Precomp.h"
+
 #include <string.h>
 
 /* #include "CpuArch.h" */
 #include "LzmaDec.h"
+#include "common.h"
 
 #define kNumTopBits 24
 #define kTopValue ((UInt32)1 << kNumTopBits)

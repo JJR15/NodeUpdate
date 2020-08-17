@@ -275,7 +275,7 @@
               <OCR_RVCT4>
                 <Type>1</Type>
                 <StartAddress>0x8000000</StartAddress>
-                <Size>0x30000</Size>
+                <Size>0x4000</Size>
               </OCR_RVCT4>
               <OCR_RVCT5>
                 <Type>1</Type>
@@ -431,6 +431,11 @@
               <FileName>LzmaDec.c</FileName>
               <FileType>1</FileType>
               <FilePath>..\Src\LzmaDec.c</FilePath>
+            </File>
+            <File>
+              <FileName>decode.c</FileName>
+              <FileType>1</FileType>
+              <FilePath>..\Src\decode.c</FilePath>
             </File>
           </Files>
         </Group>

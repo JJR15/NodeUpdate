@@ -40,7 +40,6 @@
 
 /* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "LzmaDec.h"
 #include "update.h"
 #include "common.h"
 /* Private includes ----------------------------------------------------------*/
@@ -113,18 +112,9 @@ int main(void)
   MX_GPIO_Init();
   MX_USART1_UART_Init();
   /* USER CODE BEGIN 2 */
-	CLzmaDec*p;
-	Byte *dest;
-	SizeT *destLen,*srcLen;
-	const Byte *src,*propData;
-	unsigned propSize;
-	ELzmaFinishMode finishMode;
-	ELzmaStatus *status;
-	ISzAllocPtr alloc;
-	LzmaDec_DecodeToBuf(p, dest,  destLen,
-    src, srcLen, finishMode, status);
-		
+	
 	update();
+	
   /* USER CODE END 2 */
 
   /* Infinite loop */
